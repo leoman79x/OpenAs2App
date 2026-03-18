@@ -195,7 +195,7 @@ public class RestApiTest {
     }
 
     @Test
-    public void shouldRespondWith_G_AddPartnerShipStored() throws Exception {
+    public void shouldRespondWith_G1_AddPartnerShipStored() throws Exception {
         List<NameValuePair> params = new ArrayList<NameValuePair>();
         params.add(new BasicNameValuePair("0", TEST_PARTNERSHIP_NAME));
         params.add(new BasicNameValuePair("1", TEST_PARTNER_NAME)); // the sender
@@ -204,6 +204,39 @@ public class RestApiTest {
         params.add(new BasicNameValuePair("pollerConfig.enabled", "false"));
         String buffer = this.doPost("partnership/add", true, params);
         assertThat("Add partnership via API ", buffer.replaceAll("[\\n\\r]+",  ":"), matchesPattern(".*\"type\"[ ]*:[ ]*\"OK\".*\"Stored partnerships\".*"));
+    }
+
+    @Test
+    public void shouldRespondWith_G2_UpdatePartnerStored() throws Exception {
+        List<NameValuePair> params = new ArrayList<NameValuePair>();
+        params.add(new BasicNameValuePair("0", TEST_PARTNER_NAME));
+        params.add(new BasicNameValuePair("as2_id", "PX_OID_UPDATED"));
+        String buffer = this.doPost("partner/update", true, params);
+        assertThat("Update partner via API ", buffer.replaceAll("[\\n\\r]+",  ":"), matchesPattern(".*\"type\"[ ]*:[ ]*\"OK\".*\"Stored partnerships\".*"));
+    }
+
+    @Test
+    public void shouldRespondWith_G3_UpdatePartnerNotFound() throws Exception {
+        List<NameValuePair> params = new ArrayList<NameValuePair>();
+        params.add(new BasicNameValuePair("0", "nonExistentPartner"));
+        params.add(new BasicNameValuePair("as2_id", "SOMETHING"));
+        String buffer = this.doPost("partner/update", true, params);
+        assertThat("Update nonexistent partner fails via API ", buffer.replaceAll("[\\n\\r]+",  ":"), containsString("Unknown partner name"));
+    }
+
+    @Test
+    public void shouldRespondWith_G4_UpdatePartnershipStored() throws Exception {
+        List<NameValuePair> params = new ArrayList<NameValuePair>();
+        params.add(new BasicNameValuePair("0", TEST_PARTNERSHIP_NAME));
+        params.add(new BasicNameValuePair("as2_url", "http://updated.as2host.io:10080"));
+        String buffer = this.doPost("partnership/update", true, params);
+        assertThat("Update partnership via API ", buffer.replaceAll("[\\n\\r]+",  ":"), matchesPattern(".*\"type\"[ ]*:[ ]*\"OK\".*\"Stored partnerships\".*"));
+    }
+
+    @Test
+    public void shouldRespondWith_G5_ViewUpdatedPartner() throws Exception {
+        String buffer = this.doGet("partner/view/" + TEST_PARTNER_NAME, true);
+        assertThat("View updated partner via API ", buffer.replaceAll("[\\n\\r]+",  ":"), containsString("PX_OID_UPDATED"));
     }
 
     @Test

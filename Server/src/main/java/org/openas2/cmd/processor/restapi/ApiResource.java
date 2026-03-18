@@ -139,7 +139,7 @@ public class ApiResource {
             }
         }
         CommandResult output = getProcessor().feedCommand(resource, params);
-        if (CommandResult.TYPE_OK.equals(output.getType()) && resource.startsWith("partner") && ("add".equals(action) || "delete".equals(action))) {
+        if (CommandResult.TYPE_OK.equals(output.getType()) && resource.startsWith("partner") && ("add".equals(action) || "delete".equals(action) || "update".equals(action))) {
             // Store the partnership XML since a successful change was made to the partnerships
             CommandResult store_cmd_output = getProcessor().feedCommand("partnership", Arrays.asList("store"));
             output.getResults().addAll(store_cmd_output.getResults());

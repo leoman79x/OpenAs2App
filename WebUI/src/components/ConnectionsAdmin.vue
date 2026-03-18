@@ -419,7 +419,13 @@ export default {
     saveObject: async function (data) {
       this.loadingForm = true;
       try {
-        data._prefix = `0=${data.senderIDs}&1=${data.receiverIDs}`;
+        if (data._id !== null) {
+          // Update: use key-value params for sender/receiver
+          data._prefix = `sender=${data.senderIDs}&receiver=${data.receiverIDs}`;
+        } else {
+          // Create: use positional params for sender/receiver
+          data._prefix = `0=${data.senderIDs}&1=${data.receiverIDs}`;
+        }
         console.log("save data222", data);
         await Utils.Crud.saveObject("partnership", data).then(()=>{
           this.loadingTable = this.loadingForm = true;

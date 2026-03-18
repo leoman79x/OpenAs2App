@@ -88,11 +88,11 @@ const Utils = {
             var old_id=data._id;
             // delete data._id;
             if(old_id !== null) {
-                return this.deleteObject(resource,old_id).then( () => this.createObject(resource,data));
+                return this.updateObject(resource,data);
             }else{
                 return this.createObject(resource,data);
             }
-            
+
         },
         importCertificate: async function(data) {
             console.log('Creating',data);
@@ -114,6 +114,28 @@ const Utils = {
             }catch(e) {
                 console.log(e,url);
                 throw(`Error Creating Object:\n${e}`);
+            }
+        },
+        updateObject: async function(resource,data) {
+            console.log('Updating',data);
+            var url=store.state.server +  `/${resource}/update/${data.name}` ;
+            try {
+                var form = '';
+                if(data._prefix) {
+                    form = data._prefix + '&';
+                }
+                delete data._prefix;
+                form += Utils.URLEncode(data);
+                console.log('Posting Update Form', form);
+                var response = await axios.post(url,form,{  auth: { username: store.state.username, password: store.state.password } });
+                if(response.data.type === 'OK') {
+                    return true;
+                }else{
+                    throw response.data.result;
+                }
+            }catch(e) {
+                console.log(e,url);
+                throw(`Error Updating Object:\n${e}`);
             }
         },
         createObject: async function(resource,data) {
