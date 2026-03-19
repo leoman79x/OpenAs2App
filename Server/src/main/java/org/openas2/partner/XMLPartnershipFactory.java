@@ -304,6 +304,36 @@ public class XMLPartnershipFactory extends BasePartnershipFactory implements Has
         return true;
     }
 
+    /**
+     * Replaces an existing element found by XPath with a new element, preserving position in the document.
+     * @param xpath - XPath expression to find the existing element.
+     * @param newElement - the replacement element.
+     * @return true if the replacement was successful.
+     */
+    public boolean replaceElement(String xpath, Element newElement) {
+        Document doc = getPartnershipsXml();
+        XPath xPath = XPathFactory.newInstance().newXPath();
+        NodeList nodes;
+        try {
+            nodes = (NodeList)xPath.evaluate(xpath, doc, XPathConstants.NODESET);
+        } catch (XPathExpressionException e) {
+            logger.error("Error trying to find any nodes in the XPATH expression: " + xpath, e);
+            return false;
+        }
+        int nodeCount = nodes.getLength();
+        if (nodeCount == 0) {
+            logger.error(" Failed to find a node using XPATH expression: " + xpath);
+            return false;
+        } else if (nodeCount > 1) {
+            logger.error(" Replace aborted. More than 1 node found using XPATH expression: " + xpath);
+            return false;
+        }
+        Node oldNode = nodes.item(0);
+        Node importedNode = doc.importNode(newElement, true);
+        oldNode.getParentNode().replaceChild(importedNode, oldNode);
+        return true;
+    }
+
     public void storePartnership() throws OpenAS2Exception {
         String fn = getFilename();
 

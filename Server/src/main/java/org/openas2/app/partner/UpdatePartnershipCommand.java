@@ -11,6 +11,7 @@ import org.openas2.util.XMLUtil;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -59,9 +60,12 @@ public class UpdatePartnershipCommand extends AliasedPartnershipsCommand {
             // Read current sender/receiver names as defaults
             String senderName = existing.getSenderID(Partnership.PID_NAME);
             String receiverName = existing.getReceiverID(Partnership.PID_NAME);
-            Element pollerConfigElem = null;
 
-            // Parse key=value params
+            // Collect merged attributes: start from existing, override with params
+            Map<String, String> mergedAttributes = new HashMap<>(existing.getAttributes());
+            Map<String, String> pollerConfigAttrs = new HashMap<>();
+
+            // Parse key=value params and merge
             for (int i = 1; i < params.length; i++) {
                 String param = (String) params[i];
                 int equalsPos = param.indexOf('=');
@@ -71,7 +75,10 @@ public class UpdatePartnershipCommand extends AliasedPartnershipsCommand {
                     String key = param.substring(0, equalsPos);
                     String value = param.substring(equalsPos + 1);
                     if ("name".equals(key)) {
-                        return new CommandResult(CommandResult.TYPE_ERROR, "Cannot change partnership name via update");
+                        if (!name.equals(value)) {
+                            return new CommandResult(CommandResult.TYPE_ERROR, "Cannot change partnership name via update");
+                        }
+                        continue;
                     } else if ("sender".equals(key)) {
                         if (!partFx.getPartners().containsKey(value)) {
                             return new CommandResult(CommandResult.TYPE_ERROR, "Unknown sender partner: " + value);
@@ -89,28 +96,16 @@ public class UpdatePartnershipCommand extends AliasedPartnershipsCommand {
                         if (!m.find()) {
                             return new CommandResult(CommandResult.TYPE_ERROR, "Failed to parse pollerConfig param: " + param);
                         }
-                        // Defer pollerConfig element creation until we have the doc
-                        // Store raw params and process after doc creation
-                        // For now, update the attribute in-memory
-                        existing.setAttribute(key, value);
+                        pollerConfigAttrs.put(m.group(1), m.group(2));
                     } else {
-                        existing.setAttribute(key, value);
+                        mergedAttributes.put(key, value);
                     }
                 } else {
                     return new CommandResult(CommandResult.TYPE_ERROR, "incoming parameter missing value");
                 }
             }
 
-            // Remove from in-memory list
-            partFx.getPartnerships().remove(existing);
-
-            // Delete old DOM element
-            XMLPartnershipFactory xmlPartFx = (XMLPartnershipFactory) partFx;
-            if (!xmlPartFx.deleteElement("/partnerships/partnership[@name='" + name + "']")) {
-                return new CommandResult(CommandResult.TYPE_ERROR, "Partnership update failed: could not remove old XML element for: " + name);
-            }
-
-            // Build new DOM element
+            // Build new DOM element — mirrors AddPartnershipCommand exactly
             Document doc;
             try {
                 doc = XMLUtil.createDoc(null);
@@ -122,39 +117,32 @@ public class UpdatePartnershipCommand extends AliasedPartnershipsCommand {
             doc.appendChild(partnershipRoot);
             partnershipRoot.setAttribute("name", name);
 
-            // Sender child element
             Element senderElem = doc.createElement(Partnership.PCFG_SENDER);
             senderElem.setAttribute("name", senderName);
             partnershipRoot.appendChild(senderElem);
 
-            // Receiver child element
             Element receiverElem = doc.createElement(Partnership.PCFG_RECEIVER);
             receiverElem.setAttribute("name", receiverName);
             partnershipRoot.appendChild(receiverElem);
 
-            // Attribute child elements from the partnership's attributes map
-            for (Map.Entry<String, String> entry : existing.getAttributes().entrySet()) {
-                String key = entry.getKey();
-                // Skip pollerConfig entries from attributes — they go in pollerConfig element
-                if (key.startsWith("pollerConfig.")) {
-                    String pollerAttrName = key.substring("pollerConfig.".length());
-                    if (pollerConfigElem == null) {
-                        pollerConfigElem = doc.createElement("pollerConfig");
-                    }
-                    pollerConfigElem.setAttribute(pollerAttrName, entry.getValue());
-                } else {
-                    Element attrElem = doc.createElement("attribute");
-                    attrElem.setAttribute("name", key);
-                    attrElem.setAttribute("value", entry.getValue());
-                    partnershipRoot.appendChild(attrElem);
-                }
+            for (Map.Entry<String, String> entry : mergedAttributes.entrySet()) {
+                Element attrElem = doc.createElement("attribute");
+                attrElem.setAttribute("name", entry.getKey());
+                attrElem.setAttribute("value", entry.getValue());
+                partnershipRoot.appendChild(attrElem);
             }
 
-            if (pollerConfigElem != null) {
+            if (!pollerConfigAttrs.isEmpty()) {
+                Element pollerConfigElem = doc.createElement("pollerConfig");
+                for (Map.Entry<String, String> entry : pollerConfigAttrs.entrySet()) {
+                    pollerConfigElem.setAttribute(entry.getKey(), entry.getValue());
+                }
                 partnershipRoot.appendChild(pollerConfigElem);
             }
 
-            // Re-load partnership from XML element (validates and re-adds to list, sets up poller)
+            // Replace in-memory partnership
+            partFx.getPartnerships().remove(existing);
+            XMLPartnershipFactory xmlPartFx = (XMLPartnershipFactory) partFx;
             try {
                 xmlPartFx.loadPartnership(partFx.getPartners(), partFx.getPartnerships(), partnershipRoot);
             } catch (OpenAS2Exception e) {
@@ -162,8 +150,10 @@ public class UpdatePartnershipCommand extends AliasedPartnershipsCommand {
                 return new CommandResult(CommandResult.TYPE_ERROR, "Failed to reload updated partnership: " + e.getMessage());
             }
 
-            // Add to DOM
-            xmlPartFx.addElement(partnershipRoot);
+            // Replace DOM element in-place (preserves ordering)
+            if (!xmlPartFx.replaceElement("/partnerships/partnership[@name='" + name + "']", partnershipRoot)) {
+                return new CommandResult(CommandResult.TYPE_ERROR, "Partnership update failed: could not replace XML element for: " + name);
+            }
 
             return new CommandResult(CommandResult.TYPE_OK);
         }

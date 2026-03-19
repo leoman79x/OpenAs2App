@@ -4,10 +4,13 @@ import org.openas2.OpenAS2Exception;
 import org.openas2.cmd.CommandResult;
 import org.openas2.partner.PartnershipFactory;
 import org.openas2.partner.XMLPartnershipFactory;
-import org.openas2.util.XMLUtil;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.FactoryConfigurationError;
+import javax.xml.parsers.ParserConfigurationException;
 import java.util.Map;
 
 /**
@@ -40,7 +43,27 @@ public class UpdatePartnerCommand extends AliasedPartnershipsCommand {
                 return new CommandResult(CommandResult.TYPE_ERROR, "Unknown partner name: " + name);
             }
 
-            // Parse key=value params and merge into existing partner map
+            // Build new DOM element: start from existing attributes, override with params
+            // This mirrors AddPartnerCommand's approach of building the element first
+            DocumentBuilder db = null;
+            try {
+                db = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+            } catch (ParserConfigurationException e) {
+                throw new OpenAS2Exception(e);
+            } catch (FactoryConfigurationError e) {
+                throw new OpenAS2Exception(e);
+            }
+
+            Document doc = db.newDocument();
+            Element partnerRoot = doc.createElement("partner");
+            doc.appendChild(partnerRoot);
+
+            // Copy all existing attributes onto the element
+            for (Map.Entry<String, String> entry : partner.entrySet()) {
+                partnerRoot.setAttribute(entry.getKey(), entry.getValue());
+            }
+
+            // Override with incoming params (same parsing as AddPartnerCommand)
             for (int i = 1; i < params.length; i++) {
                 String param = (String) params[i];
                 int pos = param.indexOf('=');
@@ -48,35 +71,28 @@ public class UpdatePartnerCommand extends AliasedPartnershipsCommand {
                     return new CommandResult(CommandResult.TYPE_ERROR, "incoming parameter missing name");
                 } else if (pos > 0) {
                     String key = param.substring(0, pos);
+                    String value = param.substring(pos + 1);
                     if ("name".equals(key)) {
-                        return new CommandResult(CommandResult.TYPE_ERROR, "Cannot change partner name via update");
+                        if (!name.equals(value)) {
+                            return new CommandResult(CommandResult.TYPE_ERROR, "Cannot change partner name via update");
+                        }
+                        continue;
                     }
-                    partner.put(key, param.substring(pos + 1));
+                    partnerRoot.setAttribute(key, value);
                 } else {
                     return new CommandResult(CommandResult.TYPE_ERROR, "incoming parameter missing value");
                 }
             }
 
-            // Delete old DOM element and rebuild from updated in-memory state
+            // Replace in-memory partner map
+            partFx.getPartners().remove(name);
             XMLPartnershipFactory xmlPartFx = (XMLPartnershipFactory) partFx;
-            if (!xmlPartFx.deleteElement("/partnerships/partner[@name='" + name + "']")) {
-                return new CommandResult(CommandResult.TYPE_ERROR, "Partner update failed: could not remove old XML element for: " + name);
-            }
+            xmlPartFx.loadPartner(partFx.getPartners(), partnerRoot);
 
-            Document doc;
-            try {
-                doc = XMLUtil.createDoc(null);
-            } catch (Exception e) {
-                throw new OpenAS2Exception(e);
+            // Replace DOM element in-place (preserves ordering before partnerships)
+            if (!xmlPartFx.replaceElement("/partnerships/partner[@name='" + name + "']", partnerRoot)) {
+                return new CommandResult(CommandResult.TYPE_ERROR, "Partner update failed: could not replace XML element for: " + name);
             }
-
-            Element partnerRoot = doc.createElement("partner");
-            doc.appendChild(partnerRoot);
-            for (Map.Entry<String, String> entry : partner.entrySet()) {
-                partnerRoot.setAttribute(entry.getKey(), entry.getValue());
-            }
-
-            xmlPartFx.addElement(partnerRoot);
 
             return new CommandResult(CommandResult.TYPE_OK);
         }
