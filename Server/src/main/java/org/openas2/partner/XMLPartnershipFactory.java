@@ -37,6 +37,7 @@ import java.io.IOException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
@@ -52,7 +53,7 @@ import java.util.regex.Pattern;
  *
  * @author joseph mcverry
  */
-public class XMLPartnershipFactory extends BasePartnershipFactory implements HasSchedule {
+public class XMLPartnershipFactory extends BasePartnershipFactory implements HasSchedule, StorablePartnershipFactory {
 
     public static final String PARAM_FILENAME = "filename";
     public static final String PARAM_INTERVAL = "interval";
@@ -332,6 +333,170 @@ public class XMLPartnershipFactory extends BasePartnershipFactory implements Has
         Node importedNode = doc.importNode(newElement, true);
         oldNode.getParentNode().replaceChild(importedNode, oldNode);
         return true;
+    }
+
+    @Override
+    public void addPartner(Map<String, String> attributes) throws OpenAS2Exception {
+        try {
+            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+            DocumentBuilder db = dbf.newDocumentBuilder();
+            Document doc = db.newDocument();
+            Element partnerRoot = doc.createElement("partner");
+            doc.appendChild(partnerRoot);
+            for (Map.Entry<String, String> entry : attributes.entrySet()) {
+                partnerRoot.setAttribute(entry.getKey(), entry.getValue());
+            }
+            loadPartner(getPartners(), partnerRoot);
+            addElement(partnerRoot);
+        } catch (Exception e) {
+            throw new OpenAS2Exception("Failed to add partner: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void deletePartner(String name) throws OpenAS2Exception {
+        getPartners().remove(name);
+        if (!deleteElement("/partnerships/partner[@name='" + name + "']")) {
+            throw new OpenAS2Exception("Partner delete failed in XML document for partner name: " + name);
+        }
+    }
+
+    @Override
+    public void updatePartner(String name, Map<String, String> attributes) throws OpenAS2Exception {
+        try {
+            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+            DocumentBuilder db = dbf.newDocumentBuilder();
+            Document doc = db.newDocument();
+            Element partnerRoot = doc.createElement("partner");
+            doc.appendChild(partnerRoot);
+            for (Map.Entry<String, String> entry : attributes.entrySet()) {
+                partnerRoot.setAttribute(entry.getKey(), entry.getValue());
+            }
+            getPartners().remove(name);
+            loadPartner(getPartners(), partnerRoot);
+            if (!replaceElement("/partnerships/partner[@name='" + name + "']", partnerRoot)) {
+                throw new OpenAS2Exception("Partner update failed: could not replace XML element for: " + name);
+            }
+        } catch (OpenAS2Exception e) {
+            throw e;
+        } catch (Exception e) {
+            throw new OpenAS2Exception("Failed to update partner: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void addPartnership(String name, String senderName, String receiverName,
+                               Map<String, String> attributes, Map<String, String> pollerConfig) throws OpenAS2Exception {
+        try {
+            Document doc = XMLUtil.createDoc(null);
+            Element partnershipRoot = doc.createElement("partnership");
+            doc.appendChild(partnershipRoot);
+            partnershipRoot.setAttribute("name", name);
+
+            Element senderElem = doc.createElement(Partnership.PCFG_SENDER);
+            senderElem.setAttribute("name", senderName);
+            partnershipRoot.appendChild(senderElem);
+
+            Element receiverElem = doc.createElement(Partnership.PCFG_RECEIVER);
+            receiverElem.setAttribute("name", receiverName);
+            partnershipRoot.appendChild(receiverElem);
+
+            for (Map.Entry<String, String> entry : attributes.entrySet()) {
+                Element attrElem = doc.createElement("attribute");
+                attrElem.setAttribute("name", entry.getKey());
+                attrElem.setAttribute("value", entry.getValue());
+                partnershipRoot.appendChild(attrElem);
+            }
+
+            if (pollerConfig != null && !pollerConfig.isEmpty()) {
+                Element pollerConfigElem = doc.createElement("pollerConfig");
+                for (Map.Entry<String, String> entry : pollerConfig.entrySet()) {
+                    pollerConfigElem.setAttribute(entry.getKey(), entry.getValue());
+                }
+                partnershipRoot.appendChild(pollerConfigElem);
+            }
+
+            loadPartnership(getPartners(), getPartnerships(), partnershipRoot);
+            addElement(partnershipRoot);
+        } catch (OpenAS2Exception e) {
+            throw e;
+        } catch (Exception e) {
+            throw new OpenAS2Exception("Failed to add partnership: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void deletePartnership(String name) throws OpenAS2Exception {
+        Iterator<Partnership> iter = getPartnerships().iterator();
+        while (iter.hasNext()) {
+            Partnership p = iter.next();
+            if (p.getName().equals(name)) {
+                iter.remove();
+                if (!deleteElement("/partnerships/partnership[@name='" + name + "']")) {
+                    throw new OpenAS2Exception("Partnership delete failed in XML document for partnership name: " + name);
+                }
+                return;
+            }
+        }
+        throw new OpenAS2Exception("Partnership not found: " + name);
+    }
+
+    @Override
+    public void updatePartnership(String name, String senderName, String receiverName,
+                                  Map<String, String> attributes, Map<String, String> pollerConfig) throws OpenAS2Exception {
+        // Remove existing partnership from in-memory list
+        Iterator<Partnership> iter = getPartnerships().iterator();
+        boolean found = false;
+        while (iter.hasNext()) {
+            Partnership p = iter.next();
+            if (p.getName().equals(name)) {
+                iter.remove();
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            throw new OpenAS2Exception("Partnership not found: " + name);
+        }
+
+        try {
+            Document doc = XMLUtil.createDoc(null);
+            Element partnershipRoot = doc.createElement("partnership");
+            doc.appendChild(partnershipRoot);
+            partnershipRoot.setAttribute("name", name);
+
+            Element senderElem = doc.createElement(Partnership.PCFG_SENDER);
+            senderElem.setAttribute("name", senderName);
+            partnershipRoot.appendChild(senderElem);
+
+            Element receiverElem = doc.createElement(Partnership.PCFG_RECEIVER);
+            receiverElem.setAttribute("name", receiverName);
+            partnershipRoot.appendChild(receiverElem);
+
+            for (Map.Entry<String, String> entry : attributes.entrySet()) {
+                Element attrElem = doc.createElement("attribute");
+                attrElem.setAttribute("name", entry.getKey());
+                attrElem.setAttribute("value", entry.getValue());
+                partnershipRoot.appendChild(attrElem);
+            }
+
+            if (pollerConfig != null && !pollerConfig.isEmpty()) {
+                Element pollerConfigElem = doc.createElement("pollerConfig");
+                for (Map.Entry<String, String> entry : pollerConfig.entrySet()) {
+                    pollerConfigElem.setAttribute(entry.getKey(), entry.getValue());
+                }
+                partnershipRoot.appendChild(pollerConfigElem);
+            }
+
+            loadPartnership(getPartners(), getPartnerships(), partnershipRoot);
+            if (!replaceElement("/partnerships/partnership[@name='" + name + "']", partnershipRoot)) {
+                throw new OpenAS2Exception("Partnership update failed: could not replace XML element for: " + name);
+            }
+        } catch (OpenAS2Exception e) {
+            throw e;
+        } catch (Exception e) {
+            throw new OpenAS2Exception("Failed to update partnership: " + e.getMessage(), e);
+        }
     }
 
     public void storePartnership() throws OpenAS2Exception {

@@ -6,10 +6,7 @@ import org.openas2.OpenAS2Exception;
 import org.openas2.cmd.CommandResult;
 import org.openas2.partner.Partnership;
 import org.openas2.partner.PartnershipFactory;
-import org.openas2.partner.XMLPartnershipFactory;
-import org.openas2.util.XMLUtil;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
+import org.openas2.partner.StorablePartnershipFactory;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -40,6 +37,10 @@ public class UpdatePartnershipCommand extends AliasedPartnershipsCommand {
             return new CommandResult(CommandResult.TYPE_INVALID_PARAM_COUNT, getUsage());
         }
 
+        if (!(partFx instanceof StorablePartnershipFactory)) {
+            return new CommandResult(CommandResult.TYPE_COMMAND_NOT_SUPPORTED, "Not supported by current partnership store");
+        }
+
         synchronized (partFx) {
             String name = params[0].toString();
 
@@ -65,7 +66,6 @@ public class UpdatePartnershipCommand extends AliasedPartnershipsCommand {
             Map<String, String> mergedAttributes = new HashMap<>(existing.getAttributes());
             Map<String, String> pollerConfigAttrs = new HashMap<>();
 
-            // Parse key=value params and merge
             for (int i = 1; i < params.length; i++) {
                 String param = (String) params[i];
                 int equalsPos = param.indexOf('=');
@@ -105,54 +105,11 @@ public class UpdatePartnershipCommand extends AliasedPartnershipsCommand {
                 }
             }
 
-            // Build new DOM element — mirrors AddPartnershipCommand exactly
-            Document doc;
             try {
-                doc = XMLUtil.createDoc(null);
-            } catch (Exception e) {
-                throw new OpenAS2Exception(e);
-            }
-
-            Element partnershipRoot = doc.createElement("partnership");
-            doc.appendChild(partnershipRoot);
-            partnershipRoot.setAttribute("name", name);
-
-            Element senderElem = doc.createElement(Partnership.PCFG_SENDER);
-            senderElem.setAttribute("name", senderName);
-            partnershipRoot.appendChild(senderElem);
-
-            Element receiverElem = doc.createElement(Partnership.PCFG_RECEIVER);
-            receiverElem.setAttribute("name", receiverName);
-            partnershipRoot.appendChild(receiverElem);
-
-            for (Map.Entry<String, String> entry : mergedAttributes.entrySet()) {
-                Element attrElem = doc.createElement("attribute");
-                attrElem.setAttribute("name", entry.getKey());
-                attrElem.setAttribute("value", entry.getValue());
-                partnershipRoot.appendChild(attrElem);
-            }
-
-            if (!pollerConfigAttrs.isEmpty()) {
-                Element pollerConfigElem = doc.createElement("pollerConfig");
-                for (Map.Entry<String, String> entry : pollerConfigAttrs.entrySet()) {
-                    pollerConfigElem.setAttribute(entry.getKey(), entry.getValue());
-                }
-                partnershipRoot.appendChild(pollerConfigElem);
-            }
-
-            // Replace in-memory partnership
-            partFx.getPartnerships().remove(existing);
-            XMLPartnershipFactory xmlPartFx = (XMLPartnershipFactory) partFx;
-            try {
-                xmlPartFx.loadPartnership(partFx.getPartners(), partFx.getPartnerships(), partnershipRoot);
+                ((StorablePartnershipFactory) partFx).updatePartnership(name, senderName, receiverName, mergedAttributes, pollerConfigAttrs);
             } catch (OpenAS2Exception e) {
                 logger.error(e.getMessage(), e);
                 return new CommandResult(CommandResult.TYPE_ERROR, "Failed to reload updated partnership: " + e.getMessage());
-            }
-
-            // Replace DOM element in-place (preserves ordering)
-            if (!xmlPartFx.replaceElement("/partnerships/partnership[@name='" + name + "']", partnershipRoot)) {
-                return new CommandResult(CommandResult.TYPE_ERROR, "Partnership update failed: could not replace XML element for: " + name);
             }
 
             return new CommandResult(CommandResult.TYPE_OK);

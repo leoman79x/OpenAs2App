@@ -3,14 +3,10 @@ package org.openas2.app.partner;
 import org.openas2.OpenAS2Exception;
 import org.openas2.cmd.CommandResult;
 import org.openas2.partner.PartnershipFactory;
-import org.openas2.partner.XMLPartnershipFactory;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
+import org.openas2.partner.StorablePartnershipFactory;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.FactoryConfigurationError;
-import javax.xml.parsers.ParserConfigurationException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * adds a new partner entry in partnership store
@@ -35,44 +31,29 @@ public class AddPartnerCommand extends AliasedPartnershipsCommand {
             return new CommandResult(CommandResult.TYPE_INVALID_PARAM_COUNT, getUsage());
         }
 
+        if (!(partFx instanceof StorablePartnershipFactory)) {
+            return new CommandResult(CommandResult.TYPE_COMMAND_NOT_SUPPORTED, "Not supported by current partnership store");
+        }
+
         synchronized (partFx) {
-
-            DocumentBuilder db = null;
-            try {
-                db = DocumentBuilderFactory.newInstance().newDocumentBuilder();
-            } catch (ParserConfigurationException e) {
-                throw new OpenAS2Exception(e);
-            } catch (FactoryConfigurationError e) {
-                throw new OpenAS2Exception(e);
-            }
-
-            Document doc = db.newDocument();
-
-            Element partnerRoot = doc.createElement("partner");
-            doc.appendChild(partnerRoot);
+            Map<String, String> attributes = new LinkedHashMap<>();
 
             for (int i = 0; i < params.length; i++) {
                 String param = (String) params[i];
                 int pos = param.indexOf('=');
                 if (i == 0) {
-                    partnerRoot.setAttribute("name", param);
+                    attributes.put("name", param);
                 } else if (pos == 0) {
                     return new CommandResult(CommandResult.TYPE_ERROR, "incoming parameter missing name");
                 } else if (pos > 0) {
-                    partnerRoot.setAttribute(param.substring(0, pos), param.substring(pos + 1));
-
+                    attributes.put(param.substring(0, pos), param.substring(pos + 1));
                 } else {
                     return new CommandResult(CommandResult.TYPE_ERROR, "incoming parameter missing value");
                 }
-
             }
 
-            ((XMLPartnershipFactory) partFx).loadPartner(partFx.getPartners(), partnerRoot);
-            // Add the element to the already loaded partnership XML doc
-            ((XMLPartnershipFactory) partFx).addElement(partnerRoot);
-
+            ((StorablePartnershipFactory) partFx).addPartner(attributes);
             return new CommandResult(CommandResult.TYPE_OK);
         }
-
     }
 }

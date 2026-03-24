@@ -4,7 +4,7 @@ import org.openas2.OpenAS2Exception;
 import org.openas2.cmd.CommandResult;
 import org.openas2.partner.Partnership;
 import org.openas2.partner.PartnershipFactory;
-import org.openas2.partner.XMLPartnershipFactory;
+import org.openas2.partner.StorablePartnershipFactory;
 
 import java.util.Iterator;
 
@@ -31,38 +31,27 @@ public class DeletePartnerCommand extends AliasedPartnershipsCommand {
             return new CommandResult(CommandResult.TYPE_INVALID_PARAM_COUNT, getUsage());
         }
 
+        if (!(partFx instanceof StorablePartnershipFactory)) {
+            return new CommandResult(CommandResult.TYPE_COMMAND_NOT_SUPPORTED, "Not supported by current partnership store");
+        }
+
         synchronized (partFx) {
-
             String name = params[0].toString();
-            Iterator<String> parts = partFx.getPartners().keySet().iterator();
 
-            boolean found = false;
-
-            while (parts.hasNext()) {
-                String partName = parts.next();
-                if (partName.equals(name)) {
-                    found = true;
-                }
-            }
-
-            if (found == false) {
+            if (!partFx.getPartners().containsKey(name)) {
                 return new CommandResult(CommandResult.TYPE_ERROR, "Unknown partner name: " + name);
             }
 
+            // Check if partner is in use by any partnership
             Iterator<Partnership> partnerships = partFx.getPartnerships().iterator();
-            boolean partnershipFound = false;
-            while (partnerships.hasNext() && partnershipFound == false) {
+            while (partnerships.hasNext()) {
                 Partnership part = partnerships.next();
-                partnershipFound = part.getReceiverIDs().containsValue(name) || part.getSenderIDs().containsValue(name);
+                if (part.getReceiverIDs().containsValue(name) || part.getSenderIDs().containsValue(name)) {
+                    return new CommandResult(CommandResult.TYPE_ERROR, "Cannot delete partner; it is tied to some partnerships");
+                }
             }
 
-            if (partnershipFound) {
-                return new CommandResult(CommandResult.TYPE_ERROR, "Cannot delete partner; it is tied to some partnerships");
-            }
-            partFx.getPartners().remove(name);
-            if (!((XMLPartnershipFactory) partFx).deleteElement("/partnerships/partner[@name='" + name + "']")) {
-                new CommandResult(CommandResult.TYPE_ERROR, "Partner delete failed in XML document for partner name: " + name);
-            }
+            ((StorablePartnershipFactory) partFx).deletePartner(name);
             return new CommandResult(CommandResult.TYPE_OK);
         }
     }

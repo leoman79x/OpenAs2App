@@ -4,7 +4,7 @@ import org.openas2.OpenAS2Exception;
 import org.openas2.cmd.BaseCommand;
 import org.openas2.cmd.CommandResult;
 import org.openas2.partner.PartnershipFactory;
-import org.openas2.partner.XMLPartnershipFactory;
+import org.openas2.partner.StorablePartnershipFactory;
 
 /**
  * replaces the partnership store, backs up the original store
@@ -30,12 +30,12 @@ public class StorePartnershipsCommand extends BaseCommand {
             PartnershipFactory partnerFx = getSession().getPartnershipFactory();
             synchronized (getSession().getPartnershipFactory()) {
 
-                if (partnerFx instanceof XMLPartnershipFactory) {
-                    ((XMLPartnershipFactory) partnerFx).storePartnership();
+                if (partnerFx instanceof StorablePartnershipFactory) {
+                    ((StorablePartnershipFactory) partnerFx).storePartnership();
 
                     return new CommandResult(CommandResult.TYPE_OK, "Stored partnerships");
                 }
-                return new CommandResult(CommandResult.TYPE_COMMAND_NOT_SUPPORTED, "Not supported by current partnership store, must be XML");
+                return new CommandResult(CommandResult.TYPE_COMMAND_NOT_SUPPORTED, "Not supported by current partnership store");
             }
         } catch (OpenAS2Exception oae) {
             oae.log();
