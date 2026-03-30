@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     ports:
       - 4080:10080
       - 4081:10081
@@ -17,6 +19,7 @@ services:
     volumes:
       - ./config:/opt/openas2/config:rw
       - ./data:/opt/openas2/data:rw
+      - ./lib:/opt/openas2/lib:rw
 
 
   openas2_webui:

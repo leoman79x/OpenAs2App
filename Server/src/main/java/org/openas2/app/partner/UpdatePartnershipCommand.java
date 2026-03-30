@@ -1,0 +1,118 @@
+package org.openas2.app.partner;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.openas2.OpenAS2Exception;
+import org.openas2.cmd.CommandResult;
+import org.openas2.partner.Partnership;
+import org.openas2.partner.PartnershipFactory;
+import org.openas2.partner.StorablePartnershipFactory;
+
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * updates an existing partnership entry in partnership store
+ */
+public class UpdatePartnershipCommand extends AliasedPartnershipsCommand {
+    private Logger logger = LoggerFactory.getLogger(UpdatePartnershipCommand.class);
+
+    public String getDefaultDescription() {
+        return "Update an existing partnership definition in partnership store.";
+    }
+
+    public String getDefaultName() {
+        return "update";
+    }
+
+    public String getDefaultUsage() {
+        return "update <name> [sender=X] [receiver=Y] [attribute1=value1] [pollerConfig.attr1=value1] ...";
+    }
+
+    public CommandResult execute(PartnershipFactory partFx, Object[] params) throws OpenAS2Exception {
+        if (params.length < 1) {
+            return new CommandResult(CommandResult.TYPE_INVALID_PARAM_COUNT, getUsage());
+        }
+
+        if (!(partFx instanceof StorablePartnershipFactory)) {
+            return new CommandResult(CommandResult.TYPE_COMMAND_NOT_SUPPORTED, "Not supported by current partnership store");
+        }
+
+        synchronized (partFx) {
+            String name = params[0].toString();
+
+            // Find existing partnership
+            Partnership existing = null;
+            Iterator<Partnership> iter = partFx.getPartnerships().iterator();
+            while (iter.hasNext()) {
+                Partnership p = iter.next();
+                if (p.getName().equals(name)) {
+                    existing = p;
+                    break;
+                }
+            }
+            if (existing == null) {
+                return new CommandResult(CommandResult.TYPE_ERROR, "Partnership not found: " + name);
+            }
+
+            // Read current sender/receiver names as defaults
+            String senderName = existing.getSenderID(Partnership.PID_NAME);
+            String receiverName = existing.getReceiverID(Partnership.PID_NAME);
+
+            // Collect merged attributes: start from existing, override with params
+            Map<String, String> mergedAttributes = new HashMap<>(existing.getAttributes());
+            Map<String, String> pollerConfigAttrs = new HashMap<>();
+
+            for (int i = 1; i < params.length; i++) {
+                String param = (String) params[i];
+                int equalsPos = param.indexOf('=');
+                if (equalsPos == 0) {
+                    return new CommandResult(CommandResult.TYPE_ERROR, "incoming parameter missing name");
+                } else if (equalsPos > 0) {
+                    String key = param.substring(0, equalsPos);
+                    String value = param.substring(equalsPos + 1);
+                    if ("name".equals(key)) {
+                        if (!name.equals(value)) {
+                            return new CommandResult(CommandResult.TYPE_ERROR, "Cannot change partnership name via update");
+                        }
+                        continue;
+                    } else if ("sender".equals(key)) {
+                        if (!partFx.getPartners().containsKey(value)) {
+                            return new CommandResult(CommandResult.TYPE_ERROR, "Unknown sender partner: " + value);
+                        }
+                        senderName = value;
+                    } else if ("receiver".equals(key)) {
+                        if (!partFx.getPartners().containsKey(value)) {
+                            return new CommandResult(CommandResult.TYPE_ERROR, "Unknown receiver partner: " + value);
+                        }
+                        receiverName = value;
+                    } else if (param.startsWith("pollerConfig.")) {
+                        String regex = "^pollerConfig.([^=]*)=((?:[^\"']+)|'(?:[^']*)'|\"(?:[^\"]*)\")";
+                        Pattern p = Pattern.compile(regex);
+                        Matcher m = p.matcher(param);
+                        if (!m.find()) {
+                            return new CommandResult(CommandResult.TYPE_ERROR, "Failed to parse pollerConfig param: " + param);
+                        }
+                        pollerConfigAttrs.put(m.group(1), m.group(2));
+                    } else {
+                        mergedAttributes.put(key, value);
+                    }
+                } else {
+                    return new CommandResult(CommandResult.TYPE_ERROR, "incoming parameter missing value");
+                }
+            }
+
+            try {
+                ((StorablePartnershipFactory) partFx).updatePartnership(name, senderName, receiverName, mergedAttributes, pollerConfigAttrs);
+            } catch (OpenAS2Exception e) {
+                logger.error(e.getMessage(), e);
+                return new CommandResult(CommandResult.TYPE_ERROR, "Failed to reload updated partnership: " + e.getMessage());
+            }
+
+            return new CommandResult(CommandResult.TYPE_OK);
+        }
+    }
+}

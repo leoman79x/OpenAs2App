@@ -2,11 +2,8 @@ package org.openas2.app.partner;
 
 import org.openas2.OpenAS2Exception;
 import org.openas2.cmd.CommandResult;
-import org.openas2.partner.Partnership;
 import org.openas2.partner.PartnershipFactory;
-import org.openas2.partner.XMLPartnershipFactory;
-
-import java.util.Iterator;
+import org.openas2.partner.StorablePartnershipFactory;
 
 /**
  * removes a partnership entry in partnership store
@@ -31,22 +28,14 @@ public class DeletePartnershipCommand extends AliasedPartnershipsCommand {
             return new CommandResult(CommandResult.TYPE_INVALID_PARAM_COUNT, getUsage());
         }
 
+        if (!(partFx instanceof StorablePartnershipFactory)) {
+            return new CommandResult(CommandResult.TYPE_COMMAND_NOT_SUPPORTED, "Not supported by current partnership store");
+        }
+
         synchronized (partFx) {
-
             String name = params[0].toString();
-            Iterator<Partnership> parts = partFx.getPartnerships().iterator();
-
-            while (parts.hasNext()) {
-                Partnership part = parts.next();
-                if (part.getName().equals(name)) {
-                    partFx.getPartnerships().remove(part);
-                    if (!((XMLPartnershipFactory) partFx).deleteElement("/partnerships/partnership[@name='" + name + "']")) {
-                        return new CommandResult(CommandResult.TYPE_ERROR, "Partnership delete failed in XML document for partnership name: " + name);
-                    }
-                    return new CommandResult(CommandResult.TYPE_OK);
-                }
-            }
-            return new CommandResult(CommandResult.TYPE_ERROR, "Partnership not found: " + name);
+            ((StorablePartnershipFactory) partFx).deletePartnership(name);
+            return new CommandResult(CommandResult.TYPE_OK);
         }
     }
 }
